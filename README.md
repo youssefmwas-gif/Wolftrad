@@ -1,4 +1,5 @@
 # 🤖 بوت تداول الفوركس
 pip install -r requirements.txt
 
-python bot.py1
+python 1bot.py
+
