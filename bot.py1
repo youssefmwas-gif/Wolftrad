@@ -1,0 +1,254 @@
+import telebot
+import requests
+from datetime import datetime, timedelta
+import threading
+import time
+import random
+import json
+
+# ✅ التوكن الجديد محدث
+TOKEN = "8403763339:AAH87KyBdZMl8H3l0mdUOwIgmptpqDouwYM"
+ADMIN_USERNAME = "@wolfoldd"
+
+bot = telebot.TeleBot(TOKEN)
+
+PAIRS = {
+    'eurusd': 'EUR/USD', 'gbpusd': 'GBP/USD', 'usdjpy': 'USD/JPY',
+    'audusd': 'AUD/USD', 'usdcad': 'USD/CAD', 'gold': 'XAU/USD'
+}
+
+subscribers = set()
+news_subscribers = set()
+analysis_subscribers = set()
+user_positions = {}
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    welcome = f"""
+🤖 *بوت تداول الفوركس الاحترافي*
+
+📊 *الأقسام الرئيسية:*
+🔹 `/trading` - قسم التداول العام
+🔹 `/analysis` - تحليل الذهب والبيتكوين
+🔹 `/news` - الأخبار الاقتصادية
+🔹 `/support` - التواصل مع {ADMIN_USERNAME}
+
+🚀 *اختر قسمك الآن*
+    """
+    bot.reply_to(message, welcome, parse_mode='Markdown')
+
+@bot.message_handler(commands=['analysis'])
+def analysis_menu(message):
+    text = """
+📊 *قسم التحليل اليومي*
+
+/daily_analysis - آخر تحليل الذهب والبيتكوين
+/subscribe_analysis - اشتراك يومي تلقائي
+/unsubscribe_analysis - إلغاء الاشتراك
+/analysis_status - حالة اشتراكك
+
+*التحليل يُرسل يومياً الساعة 8 صباحاً*
+    """
+    bot.reply_to(message, text, parse_mode='Markdown')
+
+@bot.message_handler(commands=['daily_analysis'])
+def daily_analysis(message):
+    gold_analysis = get_gold_analysis()
+    btc_analysis = get_btc_analysis()
+    
+    analysis_text = f"""
+📊 *التحليل اليومي - {datetime.now().strftime('%d/%m/%Y')}*
+
+🪙 *تحليل الذهب (XAU/USD):*
+{gold_analysis}
+
+₿ *تحليل البيتكوين (BTC/USD):*
+{btc_analysis}
+
+⚠️ *تحليل تعليمي - لا يُعتبر توصية مالية*
+    """
+    # لو استُدعيت من send_daily_analysis بدون message
+    if message is not None:
+        bot.reply_to(message, analysis_text, parse_mode='Markdown')
+    return analysis_text
+
+def get_gold_analysis():
+    prices = get_gold_price()
+    current_price = prices['current'] if prices else 2650.50
+    
+    if current_price > 2650:
+        direction = "🟢 صعودي"
+        target = f"{current_price + 15:.1f}"
+        support = f"{current_price - 10:.1f}"
+    elif current_price < 2620:
+        direction = "🔴 هبوطي"
+        target = f"{current_price - 15:.1f}"
+        support = f"{current_price + 10:.1f}"
+    else:
+        direction = "🟡 جانبي"
+        target = f"{current_price + 8:.1f}"
+        support = f"{current_price - 8:.1f}"
+    
+    return f"""
+💰 السعر الحالي: `{current_price:.2f}$`
+📈 الاتجاه: {direction}
+🎯 الهدف: {target}$
+🛡️ الدعم: {support}$
+📝 *الملاحظات*: {random.choice(['قوة شرائية عالية', 'ضغط بيعي', 'انتظار اختراق', 'حركة جانبية'])}
+    """
+
+def get_btc_analysis():
+    prices = get_btc_price()
+    current_price = prices['current'] if prices else 98000
+    
+    if current_price > 100000:
+        direction = "🟢 صعودي قوي"
+        target = f"{current_price * 1.05:.0f}"
+        support = f"{current_price * 0.97:.0f}"
+    elif current_price < 90000:
+        direction = "🔴 هبوطي"
+        target = f"{current_price * 0.95:.0f}"
+        support = f"{current_price * 1.03:.0f}"
+    else:
+        direction = "🟡 تذبذب"
+        target = f"{current_price * 1.03:.0f}"
+        support = f"{current_price * 0.97:.0f}"
+    
+    return f"""
+💰 السعر الحالي: `{current_price:.0f}$`
+📈 الاتجاه: {direction}
+🎯 الهدف: {target}$
+🛡️ الدعم: {support}$
+📝 *الملاحظات*: {random.choice(['ضغط شراء من المؤسسات', 'تصريحات رئيس فيدرالي', 'حركة توزيع', 'انتظار قرار ETF'])}
+    """
+
+def get_gold_price():
+    try:
+        response = requests.get("https://api.metals.live/v1/spot/XAU", timeout=5)
+        data = response.json()
+        return {'current': float(data['price'])}
+    except:
+        return None
+
+def get_btc_price():
+    try:
+        response = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+            timeout=5
+        )
+        data = response.json()
+        return {'current': data['bitcoin']['usd']}
+    except:
+        return None
+
+@bot.message_handler(commands=['subscribe_analysis'])
+def subscribe_analysis(message):
+    user_id = message.from_user.id
+    analysis_subscribers.add(user_id)
+    bot.reply_to(
+        message,
+        "📊 ✅ تم اشتراكك في التحليل اليومي للذهب والبيتكوين!
+🕐 يُرسل يومياً الساعة 8 صباحاً"
+    )
+
+@bot.message_handler(commands=['unsubscribe_analysis'])
+def unsubscribe_analysis(message):
+    user_id = message.from_user.id
+    analysis_subscribers.discard(user_id)
+    bot.reply_to(message, "📊 ❌ تم إلغاء اشتراكك من التحليل اليومي")
+
+@bot.message_handler(commands=['analysis_status'])
+def analysis_status(message):
+    user_id = message.from_user.id
+    status = "✅ مشترك" if user_id in analysis_subscribers else "❌ غير مشترك"
+    bot.reply_to(message, f"حالة اشتراكك في التحليل اليومي: {status}")
+
+@bot.message_handler(commands=['price'])
+def get_price(message):
+    try:
+        pair = message.text.split()[1].lower()
+        if pair == 'gold':
+            prices = get_gold_price()
+            rate = prices['current'] if prices else 2650
+            text = (
+                "🪙 *XAU/USD*
+"
+                f"💰 `{rate:.2f}$`
+"
+                f"⏰ {datetime.now().strftime('%H:%M')}"
+            )
+        else:
+            text = (
+                f"💹 *{PAIRS.get(pair, pair).upper()}*
+"
+                "💰 `1.12345`
+"
+                f"⏰ {datetime.now().strftime('%H:%M')}"
+            )
+        bot.reply_to(message, text, parse_mode='Markdown')
+    except:
+        bot.reply_to(message, "❌ استخدم: /price gold أو /price eurusd")
+
+@bot.message_handler(commands=['support'])
+def support(message):
+    bot.reply_to(
+        message,
+        f"""
+📞 *التواصل مع الإدارة*
+{ADMIN_USERNAME}
+
+أرسل رسالتك الآن وسيتم إرسالها للإدارة 👇
+        """,
+        parse_mode='Markdown'
+    )
+    bot.register_next_step_handler(message, handle_support)
+
+def handle_support(message):
+    try:
+        support_text = f"""
+📩 *رسالة دعم جديدة*
+👤 {message.from_user.first_name}
+🆔 `{message.from_user.id}`
+📅 {datetime.now().strftime('%H:%M %d/%m')}
+💬 {message.text}
+        """
+        bot.send_message(ADMIN_USERNAME, support_text, parse_mode='Markdown')
+        bot.reply_to(message, "✅ تم إرسال رسالتك للإدارة!")
+    except:
+        bot.reply_to(message, "❌ خطأ في الإرسال")
+
+@bot.message_handler(commands=['help'])
+def help_cmd(message):
+    bot.reply_to(
+        message,
+        """
+🤖 *الأوامر المتاحة:*
+/start - البداية
+/analysis - قسم التحليل
+/price gold - سعر الذهب
+/daily_analysis - تحليل اليوم
+/subscribe_analysis - اشتراك يومي
+/support - التواصل مع الإدارة
+        """,
+        parse_mode='Markdown'
+    )
+
+def send_daily_analysis():
+    while True:
+        now = datetime.now()
+        if now.hour == 8 and now.minute == 0:
+            if analysis_subscribers:
+                analysis_text = daily_analysis(None)
+                for user_id in list(analysis_subscribers):
+                    try:
+                        bot.send_message(user_id, analysis_text, parse_mode='Markdown')
+                    except:
+                        pass
+            time.sleep(60)
+        else:
+            time.sleep(10)
+
+threading.Thread(target=send_daily_analysis, daemon=True).start()
+
+print("🚀 البوت يعمل بنجاح!")
+bot.infinity_polling()
